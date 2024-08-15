@@ -4,9 +4,9 @@ import android.Manifest;
 import android.content.pm.PackageManager;
 import android.database.Cursor;
 import android.os.Bundle;
-import android.util.Log;
+import android.os.Looper;
+import android.view.View;
 import android.widget.TextView;
-
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.app.ActivityCompat;
 import androidx.recyclerview.widget.LinearLayoutManager;
@@ -14,16 +14,14 @@ import androidx.recyclerview.widget.RecyclerView;
 
 import com.example.savedlocation.entity.Location;
 import com.example.savedlocation.infra.LocationDAO;
-import com.example.savedlocation.infra.LocationDatabase;
 import com.google.android.gms.location.FusedLocationProviderClient;
+import com.google.android.gms.location.LocationCallback;
+import com.google.android.gms.location.LocationRequest;
+import com.google.android.gms.location.LocationResult;
 import com.google.android.gms.location.LocationServices;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ExecutionException;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 
 public class MainActivity extends AppCompatActivity {
 
@@ -33,6 +31,7 @@ public class MainActivity extends AppCompatActivity {
     private LocationAdapter adapter;
     private List<Location> locationList;
     private TextView countView;
+    private LocationCallback locationCallback;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -45,9 +44,41 @@ public class MainActivity extends AppCompatActivity {
 
         countView = (TextView) findViewById(R.id.textCount);
 
+        locationCallback = new LocationCallback() {
+            @Override
+            public void onLocationResult(LocationResult locationResult) {
+                return;
+            }
+        };
+
         recyclerView = findViewById(R.id.recycler_view);
         recyclerView.setLayoutManager(new LinearLayoutManager(this));
 
+        startLocationUpdates();
+        reloadLocations();
+    }
+
+    @Override
+    protected void onDestroy() {
+        super.onDestroy();
+        stopLocationUpdates();
+    }
+
+    public void reloadButton(View view){
+        reloadLocations();
+    }
+
+    public void saveLocation(View view){
+        requestSingleUpdate();
+    }
+
+    public void clearLocations(View view){
+        locationdb.deleteAllLocations();
+        reloadLocations();
+    }
+
+    private void reloadLocations(){
+        locationList.clear();
         Cursor cursor = locationdb.readAllLocations();
         while (cursor.moveToNext()){
             Location location = new Location();
@@ -62,41 +93,38 @@ public class MainActivity extends AppCompatActivity {
         countView.setText(String.valueOf(adapter.getItemCount()));
     }
 
-    private void saveLocation(){
-        ExecutorService executor = Executors.newSingleThreadExecutor();
-        executor.submit(() -> {
-            Location location = null;
-            try {
-                location = getLastLocation().get();
-            } catch (Exception e) {
-                throw new RuntimeException(e);
-            }
-            if (location != null){
-                locationdb.createLocation(location.getLatitude(), location.getLongitude());
-            }
-        });
-    }
-
-    private CompletableFuture<Location> getLastLocation(){
-        CompletableFuture<Location> future = new CompletableFuture<>();
-
+    private void requestSingleUpdate() {
         if (ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED
-        && ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_COARSE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
+                && ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_COARSE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
             ActivityCompat.requestPermissions(this, new String[]{Manifest.permission.ACCESS_FINE_LOCATION}, 1);
-            future.complete(null);
-            return future;
+            return;
         }
 
         fused.getLastLocation()
                 .addOnSuccessListener(this, location -> {
-                    if (location != null){
-                        Location location1 = new Location(location.getLatitude(), location.getLongitude());
-                        future.complete(location1);
-                    }else{
-                        future.complete(null);
+                    if (location != null) {
+                        locationdb.createLocation(location.getLatitude(), location.getLongitude());
+                        reloadLocations();
                     }
                 });
+    }
 
-        return future;
+    private void startLocationUpdates() {
+        LocationRequest locationRequest = LocationRequest.create();
+        locationRequest.setInterval(10000);
+        locationRequest.setFastestInterval(5000);
+        locationRequest.setPriority(LocationRequest.PRIORITY_HIGH_ACCURACY);
+
+        if (ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED
+                && ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_COARSE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
+            ActivityCompat.requestPermissions(this, new String[]{Manifest.permission.ACCESS_FINE_LOCATION}, 1);
+            return;
+        }
+
+        fused.requestLocationUpdates(locationRequest, locationCallback, Looper.getMainLooper());
+    }
+
+    private void stopLocationUpdates() {
+        fused.removeLocationUpdates(locationCallback);
     }
 }

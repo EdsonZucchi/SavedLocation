@@ -50,4 +50,8 @@ public class LocationDAO {
         return database.delete(LocationDatabase.TABLE_LOCATIONS, LocationDatabase.COLUMN_ID + " = " + id, null);
     }
 
+    public int deleteAllLocations(){
+        return database.delete(LocationDatabase.TABLE_LOCATIONS, null, null);
+    }
+
 }
