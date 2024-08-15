@@ -1,8 +1,14 @@
 package com.example.savedlocation;
 
 import android.Manifest;
+import android.content.Context;
 import android.content.pm.PackageManager;
 import android.database.Cursor;
+import android.hardware.Sensor;
+import android.hardware.SensorEvent;
+import android.hardware.SensorEventListener;
+import android.hardware.SensorListener;
+import android.hardware.SensorManager;
 import android.os.Bundle;
 import android.os.Looper;
 import android.view.View;
@@ -23,7 +29,7 @@ import com.google.android.gms.location.LocationServices;
 import java.util.ArrayList;
 import java.util.List;
 
-public class MainActivity extends AppCompatActivity {
+public class MainActivity extends AppCompatActivity implements SensorEventListener {
 
     private LocationDAO locationdb;
     private FusedLocationProviderClient fused;
@@ -32,6 +38,10 @@ public class MainActivity extends AppCompatActivity {
     private List<Location> locationList;
     private TextView countView;
     private LocationCallback locationCallback;
+
+    private SensorManager sensorManager;
+    private Sensor pressure;
+    private float pressurePrevious = (float) 0.0;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -54,6 +64,9 @@ public class MainActivity extends AppCompatActivity {
         recyclerView = findViewById(R.id.recycler_view);
         recyclerView.setLayoutManager(new LinearLayoutManager(this));
 
+        sensorManager = (SensorManager) getSystemService(Context.SENSOR_SERVICE);
+        pressure = sensorManager.getDefaultSensor(Sensor.TYPE_PRESSURE);
+
         startLocationUpdates();
         reloadLocations();
     }
@@ -62,6 +75,18 @@ public class MainActivity extends AppCompatActivity {
     protected void onDestroy() {
         super.onDestroy();
         stopLocationUpdates();
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        sensorManager.registerListener(this, pressure, SensorManager.SENSOR_DELAY_NORMAL);
+    }
+
+    @Override
+    protected void onPause() {
+        super.onPause();
+        sensorManager.unregisterListener(this);
     }
 
     public void reloadButton(View view){
@@ -126,5 +151,24 @@ public class MainActivity extends AppCompatActivity {
 
     private void stopLocationUpdates() {
         fused.removeLocationUpdates(locationCallback);
+    }
+
+    @Override
+    public void onSensorChanged(SensorEvent event) {
+        float millibarsOfPressure = event.values[0];
+        float maxPressureValue = (float) 1100.0;
+
+        if (pressurePrevious == millibarsOfPressure) {
+            return;
+        }
+        if (millibarsOfPressure == maxPressureValue) {
+            requestSingleUpdate();
+        }
+        pressurePrevious = millibarsOfPressure;
+    }
+
+    @Override
+    public void onAccuracyChanged(Sensor sensor, int accuracy) {
+        return;
     }
 }
